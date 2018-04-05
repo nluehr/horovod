@@ -113,7 +113,7 @@ class MPITests(tf.test.TestCase):
         one_gpu = tf.GPUOptions(visible_device_list=str(local_rank))
         gpu_config = tf.ConfigProto(gpu_options=one_gpu)
         with self.test_session(config=gpu_config) as session:
-            dtypes = [tf.int32, tf.int64, tf.float32, tf.float64]
+            dtypes = [tf.int32, tf.int64, tf.float16, tf.float32, tf.float64]
             dims = [1, 2, 3]
             for dtype, dim in itertools.product(dtypes, dims):
                 with tf.device("/gpu:0"):
@@ -156,7 +156,7 @@ class MPITests(tf.test.TestCase):
         one_gpu = tf.GPUOptions(visible_device_list=str(local_rank))
         gpu_config = tf.ConfigProto(gpu_options=one_gpu)
         with self.test_session(config=gpu_config) as session:
-            dtypes = [tf.int32, tf.int64, tf.float32, tf.float64]
+            dtypes = [tf.int32, tf.int64, tf.float16, tf.float32, tf.float64]
             dims = [1, 2, 3]
             tests = []
             for dtype, dim in itertools.product(dtypes, dims):
@@ -203,7 +203,7 @@ class MPITests(tf.test.TestCase):
             '%d,%d' % (local_rank * 2, local_rank * 2 + 1)))
         gpu_config = tf.ConfigProto(gpu_options=two_gpus)
         with self.test_session(config=gpu_config) as session:
-            dtypes = [tf.int32, tf.int64, tf.float32, tf.float64]
+            dtypes = [tf.int32, tf.int64, tf.float16, tf.float32, tf.float64]
             dims = [1, 2, 3]
             for dtype, dim in itertools.product(dtypes, dims):
                 iter += 1
