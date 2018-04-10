@@ -36,6 +36,7 @@
 #include "mpi_message.h"
 #include "operations.h"
 #include "timeline.h"
+#include "half.h"
 
 /*
  * Allreduce, Allgather and Broadcast Ops.
@@ -156,6 +157,9 @@ struct HorovodGlobalState {
   int size = 1;
   int local_size = 1;
   bool mpi_threads_supported = false;
+
+  // Custom op for fp16 reduction
+  MPI_Op Float16SumOp;
 
 // The CUDA stream used for data transfers and within-allreduce operations.
 // A naive implementation would use the TensorFlow StreamExecutor CUDA
@@ -474,6 +478,8 @@ MPI_Datatype GetMPIDataType(const std::shared_ptr<Tensor> tensor) {
     return MPI_INT32_T;
   case HOROVOD_INT64:
     return MPI_INT64_T;
+  case HOROVOD_FLOAT16:
+    return MPI_UINT16_T;
   case HOROVOD_FLOAT32:
     return MPI_FLOAT;
   case HOROVOD_FLOAT64:
@@ -483,6 +489,14 @@ MPI_Datatype GetMPIDataType(const std::shared_ptr<Tensor> tensor) {
   default:
     throw std::logic_error("Type " + MPIDataType_Name(tensor->dtype()) +
                            " is not supported in MPI mode.");
+  }
+}
+
+MPI_Op GetMPISumOp(const std::shared_ptr<Tensor> tensor) {
+  if (tensor->dtype() == HOROVOD_FLOAT16) {
+    return horovod_global.Float16SumOp;
+  } else {
+    return MPI_SUM;
   }
 }
 
@@ -505,6 +519,17 @@ ncclDataType_t GetNCCLDataType(const std::shared_ptr<Tensor> tensor) {
   }
 }
 #endif
+
+// Custom reduction op for fp16 MPI_Allreduce.
+void fp16_sum_reduce(void* in, void* inout, int* len, MPI_Datatype *dtype) {
+  assert(*dtype == MPI_UINT16_T);
+  cutlass::half_t* I = reinterpret_cast<cutlass::half_t*>(in);
+  cutlass::half_t* O = reinterpret_cast<cutlass::half_t*>(inout);
+
+  for (int k=0; k<*len; k++) {
+    O[k] = O[k] + I[k];
+  }
+}
 
 #define MPI_CHECK(entries, op_name, op)                                        \
   {                                                                            \
@@ -986,7 +1011,8 @@ void PerformOperation(TensorTable& tensor_table, MPIResponse response) {
       MPI_CHECK(entries, "MPI_Allreduce",
                 MPI_Allreduce(MPI_IN_PLACE, (void*)buffer_data,
                               (int)num_elements,
-                              GetMPIDataType(first_entry.tensor), MPI_SUM,
+                              GetMPIDataType(first_entry.tensor),
+                              GetMPISumOp(first_entry.tensor),
                               MPI_COMM_WORLD))
       ACTIVITY_END_ALL(entries, timeline)
 
@@ -1030,7 +1056,8 @@ void PerformOperation(TensorTable& tensor_table, MPIResponse response) {
       MPI_CHECK(entries, "MPI_Allreduce",
                 MPI_Allreduce(sendbuf, (void*)e.output->data(),
                               (int)e.tensor->shape().num_elements(),
-                              GetMPIDataType(e.tensor), MPI_SUM,
+                              GetMPIDataType(e.tensor),
+                              GetMPISumOp(first_entry.tensor),
                               MPI_COMM_WORLD))
       ACTIVITY_END_ALL(entries, timeline)
     }
@@ -1191,6 +1218,8 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
   int local_rank, local_size;
   MPI_Comm_rank(local_comm, &local_rank);
   MPI_Comm_size(local_comm, &local_size);
+
+  MPI_Op_create(fp16_sum_reduce, 1, &state.Float16SumOp);
 
   state.rank = rank;
   state.local_rank = local_rank;
@@ -1473,6 +1502,7 @@ void BackgroundThreadLoop(HorovodGlobalState& state) {
     (*it)(SHUT_DOWN_ERROR);
   }
 
+  MPI_Op_free(&state.Float16SumOp);
   MPI_Finalize();
 }
 

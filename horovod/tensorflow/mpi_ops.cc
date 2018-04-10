@@ -368,7 +368,7 @@ REGISTER_KERNEL_BUILDER(Name("HorovodAllgather").Device(DEVICE_GPU),
 
 REGISTER_OP("HorovodAllgather")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
     .Input("tensor: T")
     .Output("output: T")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -441,7 +441,7 @@ REGISTER_KERNEL_BUILDER(Name("HorovodBroadcast").Device(DEVICE_GPU),
 
 REGISTER_OP("HorovodBroadcast")
     .Attr(
-        "T: {uint8, int8, uint16, int16, int32, int64, float32, float64, bool}")
+        "T: {uint8, int8, uint16, int16, int32, int64, float16, float32, float64, bool}")
     .Attr("root_rank: int")
     .Input("tensor: T")
     .Output("output: T")
